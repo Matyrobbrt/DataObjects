@@ -7,18 +7,18 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.matyrobbrt.dataobjects.DataObjects;
 import com.matyrobbrt.dataobjects.api.DataObjectsAPI;
 import com.matyrobbrt.dataobjects.api.mod.Mod;
 import com.matyrobbrt.dataobjects.api.registry.CreationContext;
 import com.matyrobbrt.dataobjects.api.registry.DataObjectRegistry;
 import com.matyrobbrt.dataobjects.api.registry.ObjectFactory;
-import com.matyrobbrt.dataobjects.DataObjects;
 import com.matyrobbrt.dataobjects.defaults.CreativeModeTabRegistry;
 import com.matyrobbrt.dataobjects.defaults.item.ArmorMaterialRegistry;
-import com.matyrobbrt.dataobjects.defaults.item.ItemCreator;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.CreativeModeTab;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.registries.IForgeRegistry;
 import net.minecraftforge.registries.RegisterEvent;
@@ -29,12 +29,16 @@ import java.io.InputStreamReader;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
 @AutoService(DataObjectsAPI.class)
 public class APIImpl implements DataObjectsAPI {
+    public static APIImpl instance;
+
+    public APIImpl() {
+        instance = this;
+    }
 
     private static final Map<Registry<?>, DataObjectRegistry<?, ?>> EARLY_REGISTRIES = Map.of(
             CreativeModeTabRegistry.REGISTRY, CreativeModeTabRegistry.DATA_OBJECT_REGISTRY,
@@ -50,17 +54,29 @@ public class APIImpl implements DataObjectsAPI {
     private final Map<ResourceKey<?>, DataObjectRegistry<?, ?>> registries = new HashMap<>();
     private final BiMap<ResourceLocation, BiMap<String, ObjectFactory<?, ?>>> factories = HashBiMap.create();
 
+    private final Scripts scripts = new ScriptsImpl();
+
     @Override
     public void processEntry(Mod.FileEntry entry, DataObjectRegistry<?, ?> registry) throws IOException {
-         try (final var reader = new InputStreamReader(entry.open())) {
-             final var json = gson.fromJson(reader, JsonObject.class);
-             toRegister.computeIfAbsent(registry, k -> new HashMap<>()).put(entry.location(), json);
-         }
+         processEntry(entry, registry, false);
+    }
+
+    public void processEntry(Mod.FileEntry entry, DataObjectRegistry<?, ?> registry, boolean canOverride) throws IOException {
+        try (final var reader = new InputStreamReader(entry.open())) {
+            final var json = gson.fromJson(reader, JsonObject.class);
+            final var map = toRegister.computeIfAbsent(registry, k -> new HashMap<>());
+            if (canOverride || !map.containsKey(entry.location()))
+                map.put(entry.location(), json);
+        }
     }
 
     @SubscribeEvent
     void onRegister(final RegisterEvent event) {
         if (!didRegisterEarly) {
+            for (final var tab : CreativeModeTab.TABS) {
+                final var name = new ResourceLocation(tab.getRecipeFolderName().replace('.', ':'));
+                Registry.register(CreativeModeTabRegistry.REGISTRY, name, tab);
+            }
             EARLY_REGISTRIES.forEach((objects, registry) -> doRegister(null, objects, registry));
             didRegisterEarly = true;
         }
@@ -68,7 +84,8 @@ public class APIImpl implements DataObjectsAPI {
         final var registry = registries.get(event.getRegistryKey());
         if (registry == null)
             return;
-        doRegister(event.getForgeRegistry(), event.getVanillaRegistry(), registry);
+        if (!EARLY_REGISTRIES.containsValue(registry))
+            doRegister(event.getForgeRegistry(), event.getVanillaRegistry(), registry);
     }
 
     private void doRegister(@Nullable IForgeRegistry<?> forgeRegistry, @Nullable Registry<?> vanillaRegistry, DataObjectRegistry<?, ?> registry) {
@@ -194,4 +211,8 @@ public class APIImpl implements DataObjectsAPI {
         return registry;
     }
 
+    @Override
+    public Scripts scripts() {
+        return scripts;
+    }
 }

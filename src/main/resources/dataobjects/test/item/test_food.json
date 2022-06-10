@@ -1,0 +1,17 @@
+{
+  "tab": "misc",
+  "food": {
+    "nutrition": 5,
+    "saturationModifier": 9.43,
+    "effects": [
+      {
+        "effect": {
+          "effect": "minecraft:haste",
+          "amplifier": 12,
+          "duration": 90
+        },
+        "probability": 1
+      }
+    ]
+  }
+}

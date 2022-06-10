@@ -7,14 +7,14 @@ import com.matyrobbrt.dataobjects.api.DataObjectsAPI;
 import com.matyrobbrt.dataobjects.api.registry.BindFactory;
 import com.matyrobbrt.dataobjects.api.registry.DataObjectRegistry;
 import com.matyrobbrt.dataobjects.api.registry.ObjectFactory;
-import com.matyrobbrt.dataobjects.defaults.CreativeModeTabRegistry;
+import com.matyrobbrt.dataobjects.impl.APIImpl;
 import com.matyrobbrt.dataobjects.impl.ModImpl;
 import com.matyrobbrt.dataobjects.pack.DOResourceManager;
 import com.matyrobbrt.dataobjects.util.Utils;
-import net.minecraft.core.Registry;
+import cpw.mods.jarhandling.JarMetadata;
+import cpw.mods.jarhandling.impl.Jar;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;
-import net.minecraft.world.item.CreativeModeTab;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.event.AddPackFindersEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -24,14 +24,13 @@ import net.minecraftforge.fml.event.lifecycle.FMLConstructModEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.forgespi.language.ModFileScanData;
-import net.minecraftforge.registries.RegisterEvent;
 import org.objectweb.asm.Type;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.io.IOException;
 import java.lang.annotation.ElementType;
+import java.lang.module.ModuleDescriptor;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,9 +38,11 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.jar.Manifest;
 
 @Mod(DataObjectsAPI.MOD_ID)
 @SuppressWarnings("DuplicatedCode")
@@ -61,18 +62,6 @@ public class DataObjects {
         if (FMLEnvironment.dist == Dist.CLIENT) {
             doClient();
         }
-
-        final AtomicBoolean registeredTabs = new AtomicBoolean();
-        FMLJavaModLoadingContext.get().getModEventBus().addListener((final RegisterEvent event) -> {
-            if (registeredTabs.get())
-                return;
-            for (final var tab : CreativeModeTab.TABS) {
-                final var name = new ResourceLocation(tab.getRecipeFolderName().replace('.', ':'));
-                if (!CreativeModeTabRegistry.REGISTRY.containsKey(name))
-                    Registry.register(CreativeModeTabRegistry.REGISTRY, name, tab);
-            }
-            registeredTabs.set(true);
-        });
     }
 
     private void doClient() {
@@ -186,20 +175,51 @@ public class DataObjects {
             }
         }
 
-        processDir(DOResourceManager.getLocation().toPath());
+        final var location = DOResourceManager.getLocation().toPath();
+        processDir(location.resolve(DataObjectsAPI.RESOURCE_LOCATION), paths -> location.resolve(String.join("/", paths)));
+        Files.walkFileTree(location, Set.of(), 1, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                final var name = file.getFileName().toString();
+                if (name.endsWith(".zip")) {
+                    // We want to load files from zip packs as well
+                    // Files.walkFileTree on a ZipFileSystem seems to act funky. If MML
+                    // gives us the Jar class which we can use to access the sub directories,
+                    // why not use it?
+                    final var jar = new Jar(Manifest::new, sj -> new JarMetadata() {
+
+                        @Override
+                        public String name() {
+                            return "sup?";
+                        }
+
+                        @Override
+                        public String version() {
+                            return "MIT gud";
+                        }
+
+                        @Override
+                        public ModuleDescriptor descriptor() {
+                            return ModuleDescriptor.newAutomaticModule("hello there").build();
+                        }
+                    }, (p1, p2) -> true, file.toAbsolutePath());
+                    processDir(jar.getPath(DataObjectsAPI.RESOURCE_LOCATION), paths -> jar.getPath(String.join("/", paths)));
+                }
+                return super.visitFile(file, attrs);
+            }
+        });
 
         LOGGER.info("Finished collecting DataObjects.");
     }
 
-    private static void processDir(Path dir) throws IOException {
-        final var location = dir.resolve(DataObjectsAPI.RESOURCE_LOCATION);
-        final var modIds = Utils.findNamespaces(location);
+    private static void processDir(Path dir, Function<List<String>, Path> pathGetter) throws IOException {
+        final var modIds = Utils.findNamespaces(dir);
         for (final var namespace : modIds) {
             for (final var registry : DataObjectsAPI.INSTANCE.getRegistries()) {
                 final var path = Utils.buildPath(registry.getResourceKey().location());
                 path.add(0, DataObjectsAPI.RESOURCE_LOCATION);
                 path.add(1, namespace);
-                final var dirPath = dir.resolve(String.join(File.pathSeparator, path));
+                final var dirPath = pathGetter.apply(path);
                 if (Files.exists(dirPath))
                     Files.walkFileTree(dirPath, new SimpleFileVisitor<>() {
                         @Override
@@ -208,7 +228,7 @@ public class DataObjects {
                             if (relative.endsWith(".json")) {
                                 final var entry = new com.matyrobbrt.dataobjects.api.mod.Mod.FileEntry(new ResourceLocation(namespace, relative.substring(0, relative.length() - 5)), // Strip the extension
                                         () -> Files.newInputStream(file));
-                                DataObjectsAPI.INSTANCE.processEntry(entry, registry);
+                                APIImpl.instance.processEntry(entry, registry, true); // We want to allow that folder to override
                             }
                             return super.visitFile(file, attrs);
                         }
