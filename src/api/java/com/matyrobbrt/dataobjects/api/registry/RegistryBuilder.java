@@ -5,9 +5,14 @@ import net.minecraft.resources.ResourceKey;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
+/**
+ * A builder for {@link DataObjectRegistry DataObject registries}.
+ *
+ * @param <T> the top level type of the registry
+ * @param <C> the object creator
+ */
 public class RegistryBuilder<T, C> {
     private final ResourceKey<? extends Registry<T>> resourceKey;
     private ObjectFactory<T, C> defaultFactory;
@@ -17,6 +22,7 @@ public class RegistryBuilder<T, C> {
     public RegistryBuilder(ResourceKey<? extends Registry<T>> resourceKey) {
         this.resourceKey = resourceKey;
     }
+
     public static <T, C> RegistryBuilder<T, C> builder(ResourceKey<? extends Registry<T>> resourceKey) {
         return new RegistryBuilder<>(resourceKey);
     }
@@ -39,12 +45,12 @@ public class RegistryBuilder<T, C> {
     public DataObjectRegistry<T, C> build() {
         return new DataObjectRegistry<>() {
             @Override
-            public ResourceKey<? extends Registry<T>> getResourceKey() {
+            public @NotNull ResourceKey<? extends Registry<T>> getResourceKey() {
                 return resourceKey;
             }
 
             @Override
-            public T register(CreationContext<T> context) {
+            public @NotNull T register(CreationContext<T> context) {
                 return registerMethod.apply(context);
             }
 

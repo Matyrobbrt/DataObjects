@@ -11,8 +11,19 @@ import java.util.List;
 
 public interface Mod {
 
+    /**
+     * Gets all the namespaces this mod has DataObject entries for.
+     *
+     * @return all the namespaces this mod has DataObject entries for
+     */
     List<String> getNamespaces();
 
+    /**
+     * Gets all the entries this mod has for a {@link DataObjectRegistry registry}.
+     *
+     * @param registry the registry
+     * @return the entries
+     */
     Collection<FileEntry> getEntries(DataObjectRegistry<?, ?> registry) throws IOException;
 
     record FileEntry(ResourceLocation location, Resource.IoSupplier<InputStream> getter) {
