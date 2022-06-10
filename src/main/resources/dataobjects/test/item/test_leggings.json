@@ -1,0 +1,9 @@
+{
+  "factory": {
+    "type": "armor",
+    "equipmentSlot": "head",
+    "material": "minecraft:iron"
+  },
+  "tab": "decorations",
+  "rarity": "rare"
+}

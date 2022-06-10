@@ -1,0 +1,10 @@
+{
+  "factory": {
+    "type": "sword",
+    "attackDamage": 5,
+    "tier": "gold"
+  },
+  "canRepair": false,
+  "rarity": "epic",
+  "tab": "test:tab"
+}
